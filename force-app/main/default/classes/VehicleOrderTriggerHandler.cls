@@ -13,11 +13,13 @@ public class VehicleOrderTriggerHandler {
             preventOrderIfOutOfStock(newOrders);
         }
 
-        if (isAfter && (isInsert || isUpdate)) {
-            updateStockOnOrderPlacement(newOrders, oldOrders, isInsert);
+        if (isAfter && isInsert) {
+            updateStockOnOrderPlacement(newOrders);
         }
     }
 
+
+    // Validate vehicle stock before an order is created or updated
     private static void preventOrderIfOutOfStock(
         List<Vehicle_Order__c> orders
     ) {
@@ -25,6 +27,7 @@ public class VehicleOrderTriggerHandler {
         Set<Id> vehicleIds = new Set<Id>();
 
         for (Vehicle_Order__c order : orders) {
+
             if (order.Vehicle__c != null) {
                 vehicleIds.add(order.Vehicle__c);
             }
@@ -45,50 +48,37 @@ public class VehicleOrderTriggerHandler {
 
         for (Vehicle_Order__c order : orders) {
 
-            if (order.Vehicle__c != null &&
-                vehicleStockMap.containsKey(order.Vehicle__c)) {
+            if (order.Vehicle__c == null) {
+                continue;
+            }
 
-                Vehicle__c vehicle =
-                    vehicleStockMap.get(order.Vehicle__c);
+            if (!vehicleStockMap.containsKey(order.Vehicle__c)) {
+                continue;
+            }
 
-                if (vehicle.Stock_Quantity__c <= 0) {
-                    order.Status__c = 'Pending';
-                }
+            Vehicle__c vehicle =
+                vehicleStockMap.get(order.Vehicle__c);
+
+            // If no stock is available, keep order Pending
+            if (vehicle.Stock_Quantity__c <= 0) {
+                order.Status__c = 'Pending';
             }
         }
     }
 
+
+    // Reduce stock only when a new order is inserted as Confirmed
     private static void updateStockOnOrderPlacement(
-        List<Vehicle_Order__c> orders,
-        Map<Id, Vehicle_Order__c> oldOrders,
-        Boolean isInsert
+        List<Vehicle_Order__c> orders
     ) {
 
         Set<Id> vehicleIds = new Set<Id>();
 
         for (Vehicle_Order__c order : orders) {
 
-            Boolean shouldReduceStock = false;
+            if (order.Vehicle__c != null &&
+                order.Status__c == 'Confirmed') {
 
-            if (isInsert && order.Status__c == 'Confirmed') {
-                shouldReduceStock = true;
-            }
-
-            if (!isInsert &&
-                oldOrders != null &&
-                oldOrders.containsKey(order.Id)) {
-
-                Vehicle_Order__c oldOrder =
-                    oldOrders.get(order.Id);
-
-                if (order.Status__c == 'Confirmed' &&
-                    oldOrder.Status__c != 'Confirmed') {
-
-                    shouldReduceStock = true;
-                }
-            }
-
-            if (shouldReduceStock && order.Vehicle__c != null) {
                 vehicleIds.add(order.Vehicle__c);
             }
         }
@@ -106,46 +96,36 @@ public class VehicleOrderTriggerHandler {
                 ]
             );
 
-        List<Vehicle__c> vehiclesToUpdate =
-            new List<Vehicle__c>();
+        Map<Id, Vehicle__c> vehiclesToUpdate =
+            new Map<Id, Vehicle__c>();
 
         for (Vehicle_Order__c order : orders) {
 
-            Boolean shouldReduceStock = false;
-
-            if (isInsert && order.Status__c == 'Confirmed') {
-                shouldReduceStock = true;
+            if (order.Vehicle__c == null ||
+                order.Status__c != 'Confirmed') {
+                continue;
             }
 
-            if (!isInsert &&
-                oldOrders != null &&
-                oldOrders.containsKey(order.Id)) {
-
-                Vehicle_Order__c oldOrder =
-                    oldOrders.get(order.Id);
-
-                if (order.Status__c == 'Confirmed' &&
-                    oldOrder.Status__c != 'Confirmed') {
-
-                    shouldReduceStock = true;
-                }
+            if (!vehicleStockMap.containsKey(order.Vehicle__c)) {
+                continue;
             }
 
-            if (shouldReduceStock &&
-                vehicleStockMap.containsKey(order.Vehicle__c)) {
+            Vehicle__c vehicle =
+                vehicleStockMap.get(order.Vehicle__c);
 
-                Vehicle__c vehicle =
-                    vehicleStockMap.get(order.Vehicle__c);
+            if (vehicle.Stock_Quantity__c > 0) {
 
-                if (vehicle.Stock_Quantity__c > 0) {
-                    vehicle.Stock_Quantity__c -= 1;
-                    vehiclesToUpdate.add(vehicle);
-                }
+                vehicle.Stock_Quantity__c -= 1;
+
+                vehiclesToUpdate.put(
+                    vehicle.Id,
+                    vehicle
+                );
             }
         }
 
         if (!vehiclesToUpdate.isEmpty()) {
-            update vehiclesToUpdate;
+            update vehiclesToUpdate.values();
         }
     }
 }
