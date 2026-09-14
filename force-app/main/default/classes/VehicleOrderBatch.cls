@@ -11,6 +11,7 @@ global class VehicleOrderBatch
                    Vehicle__c
             FROM Vehicle_Order__c
             WHERE Status__c = 'Pending'
+            ORDER BY CreatedDate ASC
         ]);
     }
 
@@ -35,35 +36,42 @@ global class VehicleOrderBatch
         Map<Id, Vehicle__c> vehicleStockMap =
             new Map<Id, Vehicle__c>(
                 [
-                    SELECT Id, Stock_Quantity__c
+                    SELECT Id,
+                           Stock_Quantity__c
                     FROM Vehicle__c
                     WHERE Id IN :vehicleIds
+                    FOR UPDATE
                 ]
             );
 
         List<Vehicle_Order__c> ordersToUpdate =
             new List<Vehicle_Order__c>();
 
-        List<Vehicle__c> vehiclesToUpdate =
-            new List<Vehicle__c>();
+        Map<Id, Vehicle__c> vehiclesToUpdate =
+            new Map<Id, Vehicle__c>();
 
         for (Vehicle_Order__c order : orderList) {
 
-            if (order.Vehicle__c != null &&
-                vehicleStockMap.containsKey(order.Vehicle__c)) {
+            if (order.Vehicle__c == null ||
+                !vehicleStockMap.containsKey(order.Vehicle__c)) {
+                continue;
+            }
 
-                Vehicle__c vehicle =
-                    vehicleStockMap.get(order.Vehicle__c);
+            Vehicle__c vehicle =
+                vehicleStockMap.get(order.Vehicle__c);
 
-                if (vehicle.Stock_Quantity__c > 0) {
+            if (vehicle.Stock_Quantity__c > 0) {
 
-                    order.Status__c = 'Confirmed';
+                order.Status__c = 'Confirmed';
 
-                    vehicle.Stock_Quantity__c -= 1;
+                vehicle.Stock_Quantity__c -= 1;
 
-                    ordersToUpdate.add(order);
-                    vehiclesToUpdate.add(vehicle);
-                }
+                ordersToUpdate.add(order);
+
+                vehiclesToUpdate.put(
+                    vehicle.Id,
+                    vehicle
+                );
             }
         }
 
@@ -72,14 +80,16 @@ global class VehicleOrderBatch
         }
 
         if (!vehiclesToUpdate.isEmpty()) {
-            update vehiclesToUpdate;
+            update vehiclesToUpdate.values();
         }
     }
 
-    global void finish(Database.BatchableContext bc) {
+    global void finish(
+        Database.BatchableContext bc
+    ) {
 
         System.debug(
-            'Vehicle order batch job completed.'
+            'Vehicle order batch job completed successfully.'
         );
     }
 }
