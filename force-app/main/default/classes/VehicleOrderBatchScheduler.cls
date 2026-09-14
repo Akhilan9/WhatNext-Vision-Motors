@@ -1,5 +1,4 @@
-global class VehicleOrderBatchScheduler
-    implements Schedulable {
+global class VehicleOrderBatchScheduler implements Schedulable {
 
     global void execute(SchedulableContext sc) {
 
