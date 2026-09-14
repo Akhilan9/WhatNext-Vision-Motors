@@ -1,9 +1,6 @@
-global class VehicleOrderBatch
-    implements Database.Batchable<SObject> {
+global class VehicleOrderBatch implements Database.Batchable<SObject> {
 
-    global Database.QueryLocator start(
-        Database.BatchableContext bc
-    ) {
+    global Database.QueryLocator start(Database.BatchableContext bc) {
 
         return Database.getQueryLocator([
             SELECT Id,
@@ -11,9 +8,9 @@ global class VehicleOrderBatch
                    Vehicle__c
             FROM Vehicle_Order__c
             WHERE Status__c = 'Pending'
-            ORDER BY CreatedDate ASC
         ]);
     }
+
 
     global void execute(
         Database.BatchableContext bc,
@@ -33,6 +30,7 @@ global class VehicleOrderBatch
             return;
         }
 
+
         Map<Id, Vehicle__c> vehicleStockMap =
             new Map<Id, Vehicle__c>(
                 [
@@ -40,56 +38,52 @@ global class VehicleOrderBatch
                            Stock_Quantity__c
                     FROM Vehicle__c
                     WHERE Id IN :vehicleIds
-                    FOR UPDATE
                 ]
             );
+
 
         List<Vehicle_Order__c> ordersToUpdate =
             new List<Vehicle_Order__c>();
 
-        Map<Id, Vehicle__c> vehiclesToUpdate =
-            new Map<Id, Vehicle__c>();
+        List<Vehicle__c> vehiclesToUpdate =
+            new List<Vehicle__c>();
+
 
         for (Vehicle_Order__c order : orderList) {
 
-            if (order.Vehicle__c == null ||
-                !vehicleStockMap.containsKey(order.Vehicle__c)) {
-                continue;
-            }
+            if (order.Vehicle__c != null &&
+                vehicleStockMap.containsKey(order.Vehicle__c)) {
 
-            Vehicle__c vehicle =
-                vehicleStockMap.get(order.Vehicle__c);
+                Vehicle__c vehicle =
+                    vehicleStockMap.get(order.Vehicle__c);
 
-            if (vehicle.Stock_Quantity__c > 0) {
+                if (vehicle.Stock_Quantity__c > 0) {
 
-                order.Status__c = 'Confirmed';
+                    order.Status__c = 'Confirmed';
 
-                vehicle.Stock_Quantity__c -= 1;
+                    vehicle.Stock_Quantity__c -= 1;
 
-                ordersToUpdate.add(order);
-
-                vehiclesToUpdate.put(
-                    vehicle.Id,
-                    vehicle
-                );
+                    ordersToUpdate.add(order);
+                    vehiclesToUpdate.add(vehicle);
+                }
             }
         }
+
 
         if (!ordersToUpdate.isEmpty()) {
             update ordersToUpdate;
         }
 
         if (!vehiclesToUpdate.isEmpty()) {
-            update vehiclesToUpdate.values();
+            update vehiclesToUpdate;
         }
     }
 
-    global void finish(
-        Database.BatchableContext bc
-    ) {
+
+    global void finish(Database.BatchableContext bc) {
 
         System.debug(
-            'Vehicle order batch job completed successfully.'
+            'Vehicle order batch job completed.'
         );
     }
 }
